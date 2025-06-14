@@ -1,28 +1,26 @@
-# 📦 Charger les packages utiles
+
 library(dplyr)
 
-# 📂 Lire le fichier CSV (ajuste le chemin si besoin)
-df2015 <- read.csv("Data/2015.csv", stringsAsFactors = TRUE)
+df_list <- lapply(clean_files, function(file) {
+  df <- read.csv(file, stringsAsFactors = FALSE)
+  
+  # 🧼 Forcer en character pour nettoyage
+  df$trust_government <- as.character(df$trust_government)
+  df$trust_government[df$trust_government %in% c("", "..")] <- NA
+  df$trust_government <- as.numeric(df$trust_government)
+  
+  df$happiness_score <- as.numeric(as.character(df$happiness_score))
+  df$gdp_per_capita <- as.numeric(as.character(df$gdp_per_capita))
+  df$life_expectancy <- as.numeric(as.character(df$life_expectancy))
+  df$freedom <- as.numeric(as.character(df$freedom))
+  df$generosity <- as.numeric(as.character(df$generosity))
+  df$year <- as.integer(df$year)
+  
+  return(df)
+})
 
-# 👀 Aperçu du dataset
-head(df2015)
-str(df2015)
-summary(df2015)
+# ✅ Fusionner
+df_all <- bind_rows(df_list)
 
-# 🔎 Vérifier les valeurs manquantes
-colSums(is.na(df2015))
-
-df2015 <- df2015[df2015$Country != "Israel", ]
-
-any(df2015$Country == "Israel")
-
-
-
-# 📦 Voir les valeurs aberrantes avec un boxplot (exemple sur une variable numérique)
-boxplot(df2015$ma_colonne_num, main = "Valeurs aberrantes ?")
-
-boxplot(df2015$Economy..GDP.per.Capita., main = "PIB par habitant", col = "lightblue")
-boxplot(df2015$Trust..Government.Corruption., main = "Confiance dans le gouvernement", col = "salmon")
-boxplot(df2015$Generosity, main = "Générosité", col = "lightgreen")
-boxplot(df2015$Health..Life.Expectancy., main = "Espérance de vie", col = "orange")
-
+# 🔍 Vérification rapide
+glimpse(df_all)
