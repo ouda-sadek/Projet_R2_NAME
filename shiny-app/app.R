@@ -10,6 +10,7 @@ library(rnaturalearthdata)
 library(shinycssloaders)
 library(reshape2)
 library(stringr)
+library(ggrepel)
 
 # 🔄 Charger les données avec nettoyage correct
 suppressWarnings({
@@ -27,7 +28,7 @@ suppressWarnings({
       return(df)
     }) %>%
     bind_rows()
-  write.csv(df_all, "Data_Clean/df_all.csv", row.names = FALSE)
+  
 })
 
 # 🤖 Fonction chatbot améliorée
@@ -275,11 +276,28 @@ ui <- dashboardPage(
       ),
       tabItem(tabName = "prediction",
               fluidRow(
-                box(width = 12, title = "Score réel vs Score prédit",
-                    withSpinner(plotOutput("prediction_plot")))
+                box(width = 12, title = "Score réel vs Score prédit (R² = 0.532)",
+                    withSpinner(plotOutput("prediction_plot")),
+                    box(width = 12, status = "info", solidHeader = FALSE,
+                        h4("Comment interpréter ce graphique :"),
+                        tags$ul(
+                          tags$li(tags$b("Coefficient R² (0.532) :"), 
+                                  "Indique que 53.2% de la variation du bonheur est expliquée par notre modèle."),
+                          tags$li(tags$b("Points individuels :"), 
+                                  "Chaque point représente un pays (comme le Botswana, Rwanda, Syrie) avec son score réel et prédit."),
+                          tags$li(tags$b("Ligne rouge :"), 
+                                  "La droite de régression idéale (y=x) où prédiction = réalité."),
+                          tags$li(tags$b("Écarts significatifs :"), 
+                                  "Certains pays comme la Syrie montrent des différences importantes entre bonheur réel et prédit."),
+                          tags$li(tags$b("Cas extrêmes :"), 
+                                  "Les points très éloignés de la ligne suggèrent des facteurs non capturés par le modèle.")
+                        ),
+                        p("Note : Les pays en situation de crise (guerre, etc.) ont souvent des scores réels bien inférieurs aux prédictions.",
+                          style = "font-style: italic; color: #ff6b6b;")
+                    )
+                )
               )
       ),
-      
       tabItem(tabName = "compare",
               fluidRow(
                 box(width = 3, selectInput("country1", "Pays 1:", choices = unique(df_all$country))),
@@ -313,76 +331,14 @@ ui <- dashboardPage(
 )
 
 
-# ✅ Serveur
 server <- function(input, output, session) {
+  
+  # 🌍 Carte du monde
   output$map_plot <- renderLeaflet({
     world <- ne_countries(scale = "medium", returnclass = "sf")
     df_selected <- df_all %>% filter(year == input$selected_year)
     world <- left_join(world, df_selected, by = c("name" = "country"))
     pal <- colorNumeric("plasma", domain = world$happiness_score, na.color = "#cccccc")
-    
-    output$filtered_plot <- renderPlotly({
-      req(input$filter_country, input$filter_var)
-      df_filtered <- df_all %>% 
-        filter(country == input$filter_country & !is.na(.data[[input$filter_var]]))
-      
-      if (nrow(df_filtered) == 0) {
-        return(plotly_empty(type = "scatter", mode = "lines") %>%
-                 layout(title = list(text = "Aucune donnée disponible pour cette combinaison.", font = list(color = '#ff0080')),
-                        plot_bgcolor = '#0f0f0f', paper_bgcolor = '#0f0f0f'))
-      }
-      
-      plot_ly(df_filtered,
-              x = ~year,
-              y = ~.data[[input$filter_var]],
-              type = 'scatter',
-              mode = 'lines+markers',
-              line = list(color = '#00ffe1'),
-              marker = list(color = '#ff0080')) %>%
-        layout(
-          title = paste("Évolution de", input$filter_var, "pour", input$filter_country),
-          xaxis = list(title = "Année"),
-          yaxis = list(title = input$filter_var),
-          plot_bgcolor = '#0f0f0f',
-          paper_bgcolor = '#0f0f0f',
-          font = list(color = '#d1d1d1')
-        )
-    })
-    
-    
-    output$prediction_plot <- renderPlot({
-      # Variables explicatives
-      vars <- c("gdp_per_capita", "life_expectancy", "freedom", "trust_government")
-      df_model <- df_all %>% select(happiness_score, all_of(vars)) %>% na.omit()
-      
-      # Modèle de régression linéaire
-      modele <- lm(happiness_score ~ ., data = df_model)
-      
-      # Prédictions
-      df_model$prediction <- predict(modele, newdata = df_model)
-      
-      # R²
-      r_squared <- summary(modele)$r.squared
-      
-      # Graphe
-      ggplot(df_model, aes(x = happiness_score, y = prediction)) +
-        geom_point(color = "#00ffe1", alpha = 0.7, size = 2) +
-        geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
-        labs(
-          title = paste("Score réel vs Score prédit (R² =", round(r_squared, 3), ")"),
-          x = "Score réel",
-          y = "Prédiction"
-        ) +
-        theme_minimal(base_family = "Orbitron") +
-        theme(
-          plot.background = element_rect(fill = "#0f0f0f"),
-          panel.background = element_rect(fill = "#0f0f0f"),
-          text = element_text(color = "#d1d1d1"),
-          plot.title = element_text(face = "bold", hjust = 0.5, color = "#00ffe1", size = 16)
-        )
-    })
-    
-    
     
     leaflet(world) %>%
       addProviderTiles("CartoDB.DarkMatter") %>%
@@ -391,6 +347,36 @@ server <- function(input, output, session) {
       addLegend(pal = pal, values = ~happiness_score, title = "Score de bonheur", position = "bottomright", opacity = 1)
   })
   
+  # 🔍 Explorer les données (corrigé)
+  output$filtered_plot <- renderPlotly({
+    req(input$filter_country, input$filter_var)
+    df_filtered <- df_all %>% 
+      filter(country == input$filter_country & !is.na(.data[[input$filter_var]]))
+    
+    if (nrow(df_filtered) == 0) {
+      return(plotly_empty(type = "scatter", mode = "lines") %>%
+               layout(title = list(text = "Aucune donnée disponible pour cette combinaison.", font = list(color = '#ff0080')),
+                      plot_bgcolor = '#0f0f0f', paper_bgcolor = '#0f0f0f'))
+    }
+    
+    plot_ly(df_filtered,
+            x = ~year,
+            y = ~.data[[input$filter_var]],
+            type = 'scatter',
+            mode = 'lines+markers',
+            line = list(color = '#00ffe1'),
+            marker = list(color = '#ff0080')) %>%
+      layout(
+        title = paste("Évolution de", input$filter_var, "pour", input$filter_country),
+        xaxis = list(title = "Année"),
+        yaxis = list(title = input$filter_var),
+        plot_bgcolor = '#0f0f0f',
+        paper_bgcolor = '#0f0f0f',
+        font = list(color = '#d1d1d1')
+      )
+  })
+  
+  # 📊 Boxplot
   output$boxplot_plot <- renderPlot({
     ggplot(df_all, aes(x = as.factor(year), y = happiness_score, fill = as.factor(year))) +
       geom_boxplot(color = "blue", alpha = 0.4) +
@@ -398,6 +384,7 @@ server <- function(input, output, session) {
       theme_minimal()
   })
   
+  # 🔥 Heatmap
   output$heatmap_plot <- renderPlot({
     numeric_data <- df_all %>% select(happiness_score, gdp_per_capita, life_expectancy, freedom, trust_government, generosity) %>% na.omit()
     corr <- round(cor(numeric_data), 2)
@@ -406,11 +393,13 @@ server <- function(input, output, session) {
       theme_minimal() + labs(title = "Matrice de corrélation")
   })
   
+  # 📈 Résumé du modèle linéaire
   output$summary_stats <- renderPrint({
     model <- lm(happiness_score ~ gdp_per_capita + life_expectancy + freedom + trust_government, data = df_all)
     summary(model)
   })
   
+  # ⚖ Comparaison entre 2 pays
   output$compare_plot <- renderPlot({
     df_comp <- df_all %>% filter(year == input$year_comp, country %in% c(input$country1, input$country2))
     df_melted <- melt(df_comp[, c("country", "happiness_score", "gdp_per_capita", "life_expectancy", "freedom", "trust_government", "generosity")], id.vars = "country")
@@ -421,6 +410,7 @@ server <- function(input, output, session) {
       labs(title = paste("Comparaison entre", input$country1, "et", input$country2, "en", input$year_comp), x = "Variable", y = "Valeur")
   })
   
+  # 🤖 Chatbot
   observeEvent(input$ask_button, {
     req(input$user_input)
     question <- input$user_input
@@ -428,6 +418,7 @@ server <- function(input, output, session) {
     output$bot_reply <- renderText({ reponse })
   })
   
+  # 🔬 Modèles linéaires
   output$model_tests <- renderPrint({
     model_simple <- lm(happiness_score ~ gdp_per_capita, data = df_all)
     model_duo    <- lm(happiness_score ~ gdp_per_capita + life_expectancy, data = df_all)
@@ -440,21 +431,40 @@ server <- function(input, output, session) {
     cat("\n🔹 MODELE COMPLET (PIB + Life + Freedom + Trust)\n")
     print(summary(model_full)$coefficients)
   })
-  df_model <- df_all %>%
-    select(happiness_score, gdp_per_capita, life_expectancy, freedom, trust_government, generosity) %>%
-    na.omit()
-  modele_lm <- lm(happiness_score ~ ., data = df_model)
-  df_model$prediction <- predict(modele_lm)
+  # 🌟 Prédiction du bonheur (version explicative avec erreurs)
   output$prediction_plot <- renderPlot({
-    ggplot(df_model, aes(x = happiness_score, y = prediction)) +
-      geom_point(color = "#00ffe1") +
+    model <- lm(happiness_score ~ gdp_per_capita + life_expectancy + freedom + trust_government, data = df_all)
+    df_all$predictions <- predict(model, newdata = df_all)
+    df_all$erreur <- abs(df_all$happiness_score - df_all$predictions)
+    r_squared <- summary(model)$r.squared
+    
+    top_erreurs <- df_all %>% 
+      arrange(desc(erreur)) %>%
+      head(3)
+    
+    ggplot(df_all, aes(x = happiness_score, y = predictions, color = erreur)) +
+      geom_point(size = 2.2, alpha = 0.7) +
       geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "white") +
-      theme_minimal() +
-      labs(title = "Score réel vs Score prédit",
-           x = "Score réel",
-           y = "Prédiction")
+      geom_smooth(method = "lm", se = FALSE, color = "#ff0080", linetype = "solid") +
+      geom_text_repel(data = top_erreurs, aes(label = country), color = "white", size = 3, max.overlaps = 15) +
+      scale_color_gradient(low = "#00ffe1", high = "#ff0080") +
+      labs(title = paste0("Score réel vs Score prédit (R² = ", round(r_squared, 3), ")"),
+           x = "Score réel", y = "Prédiction", color = "Erreur absolue") +
+      theme_minimal(base_family = "Orbitron") +
+      theme(
+        plot.title = element_text(color = "#00ffe1", size = 16, face = "bold", hjust = 0.5),
+        axis.title = element_text(color = "#d1d1d1", size = 13),
+        axis.text = element_text(color = "#d1d1d1"),
+        panel.background = element_rect(fill = "#0f0f0f"),
+        plot.background = element_rect(fill = "#0f0f0f"),
+        legend.background = element_rect(fill = "#0f0f0f"),
+        legend.title = element_text(color = "#d1d1d1"),
+        legend.text = element_text(color = "#d1d1d1")
+      )
   })
-  
 }
 
 shinyApp(ui, server)
+
+
+
