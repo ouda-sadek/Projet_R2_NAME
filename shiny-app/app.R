@@ -155,7 +155,9 @@ ui <- dashboardPage(
                 menuItem("📊 Comparateur de pays", tabName = "compare", icon = icon("balance-scale")),
                 menuItem("🔍 Explorer les données", tabName = "explorer", icon = icon("search")),
                 menuItem("🤖 ChatBot", tabName = "chatbot", icon = icon("robot")),
-                menuItem("🔬 Modèles linéaires", tabName = "models", icon = icon("sliders-h"))
+                menuItem("🔬 Modèles linéaires", tabName = "models", icon = icon("sliders-h")),
+                menuItem("📈 Prédiction du bonheur", tabName = "prediction", icon = icon("chart-line"))
+                
     )
   ),
   dashboardBody(
@@ -270,6 +272,13 @@ ui <- dashboardPage(
       tabItem(tabName = "analyse",
               fluidRow(box(width = 12, withSpinner(verbatimTextOutput("summary_stats"))))
       ),
+      tabItem(tabName = "prediction",
+              fluidRow(
+                box(width = 12, title = "Score réel vs Score prédit",
+                    withSpinner(plotOutput("prediction_plot")))
+              )
+      ),
+      
       tabItem(tabName = "compare",
               fluidRow(
                 box(width = 3, selectInput("country1", "Pays 1:", choices = unique(df_all$country))),
@@ -339,7 +348,38 @@ server <- function(input, output, session) {
         )
     })
     
-
+    
+    output$prediction_plot <- renderPlot({
+      # Variables explicatives
+      vars <- c("gdp_per_capita", "life_expectancy", "freedom", "trust_government")
+      df_model <- df_all %>% select(happiness_score, all_of(vars)) %>% na.omit()
+      
+      # Modèle de régression linéaire
+      modele <- lm(happiness_score ~ ., data = df_model)
+      
+      # Prédictions
+      df_model$prediction <- predict(modele, newdata = df_model)
+      
+      # R²
+      r_squared <- summary(modele)$r.squared
+      
+      # Graphe
+      ggplot(df_model, aes(x = happiness_score, y = prediction)) +
+        geom_point(color = "#00ffe1", alpha = 0.7, size = 2) +
+        geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
+        labs(
+          title = paste("Score réel vs Score prédit (R² =", round(r_squared, 3), ")"),
+          x = "Score réel",
+          y = "Prédiction"
+        ) +
+        theme_minimal(base_family = "Orbitron") +
+        theme(
+          plot.background = element_rect(fill = "#0f0f0f"),
+          panel.background = element_rect(fill = "#0f0f0f"),
+          text = element_text(color = "#d1d1d1"),
+          plot.title = element_text(face = "bold", hjust = 0.5, color = "#00ffe1", size = 16)
+        )
+    })
     
     
     
@@ -399,6 +439,21 @@ server <- function(input, output, session) {
     cat("\n🔹 MODELE COMPLET (PIB + Life + Freedom + Trust)\n")
     print(summary(model_full)$coefficients)
   })
+  df_model <- df_all %>%
+    select(happiness_score, gdp_per_capita, life_expectancy, freedom, trust_government, generosity) %>%
+    na.omit()
+  modele_lm <- lm(happiness_score ~ ., data = df_model)
+  df_model$prediction <- predict(modele_lm)
+  output$prediction_plot <- renderPlot({
+    ggplot(df_model, aes(x = happiness_score, y = prediction)) +
+      geom_point(color = "#00ffe1") +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "white") +
+      theme_minimal() +
+      labs(title = "Score réel vs Score prédit",
+           x = "Score réel",
+           y = "Prédiction")
+  })
+  
 }
 
 shinyApp(ui, server)
