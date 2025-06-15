@@ -83,3 +83,4 @@ for (year in years) {
   write.csv(df, paste0("Data_Clean/df", year, "_clean.csv"), row.names = FALSE)
   cat("\u2705 Fichier", year, "sauvegardé dans Data_Clean \n")
 }
+

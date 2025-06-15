@@ -27,6 +27,7 @@ suppressWarnings({
       return(df)
     }) %>%
     bind_rows()
+  write.csv(df_all, "Data_Clean/df_all.csv", row.names = FALSE)
 })
 
 # 🤖 Fonction chatbot améliorée
